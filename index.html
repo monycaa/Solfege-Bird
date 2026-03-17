@@ -451,14 +451,16 @@
 
     function drawBird(x, y) {
       if (assets.bird.loaded) {
-        const w = assets.bird.width || 56;
-        const h = assets.bird.height || 56;
-        ctx.drawImage(assets.bird, x - w / 2, y - h / 2);
+        const scale = 1.35;
+        const w = (assets.bird.width || 56) * scale;
+        const h = (assets.bird.height || 56) * scale;
+        ctx.drawImage(assets.bird, x - w / 2, y - h / 2, w, h);
         return;
       }
 
       ctx.save();
       ctx.translate(x, y);
+      ctx.scale(1.2, 1.2);
       ctx.fillStyle = '#ffd54f';
       ctx.beginPath();
       ctx.arc(0, 0, 18, 0, Math.PI * 2);
@@ -487,23 +489,24 @@
 
     function getPipeSize() {
       if (assets.pipe.loaded) {
-        return { w: assets.pipe.width, h: assets.pipe.height };
+        return { w: assets.pipe.width * 1.28, h: assets.pipe.height };
       }
       return { w: 92, h: 360 };
     }
 
     function drawPipe(x, y, gap) {
       if (assets.pipe.loaded) {
-        const pipeW = assets.pipe.width;
+        const scaleX = 1.28;
+        const pipeW = assets.pipe.width * scaleX;
         const pipeH = assets.pipe.height;
+
+        ctx.drawImage(assets.pipe, x, y + gap, pipeW, pipeH);
 
         ctx.save();
         ctx.translate(x, y);
-        ctx.scale(1, -1);
+        ctx.scale(scaleX, -1);
         ctx.drawImage(assets.pipe, 0, -pipeH);
         ctx.restore();
-
-        ctx.drawImage(assets.pipe, x, y + gap);
         return;
       }
 
@@ -735,8 +738,8 @@
 
         if (RESET_LOCK_EACH_PIPE && spawnedNewPipe) game.lockedIdx = null;
 
-        const birdW = assets.bird.loaded ? assets.bird.width : 36;
-        const birdH = assets.bird.loaded ? assets.bird.height : 36;
+        const birdW = assets.bird.loaded ? assets.bird.width * 1.35 : 44;
+        const birdH = assets.bird.loaded ? assets.bird.height * 1.35 : 44;
         const birdRect = { x: 150 - birdW / 2, y: game.birdY - birdH / 2, w: birdW, h: birdH };
         const topRect = { x: game.pipeX, y: 0, w: pipeSize.w, h: game.pipeY };
         const botRect = { x: game.pipeX, y: game.pipeY + game.gap, w: pipeSize.w, h: HEIGHT - (game.pipeY + game.gap) };
