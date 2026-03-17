@@ -504,60 +504,50 @@
     }
 
     function drawPipe(x, y, gap) {
-      if (assets.pipe.loaded) {
-        const scaleX = 1.28;
-        const pipeW = assets.pipe.width * scaleX;
-        const pipeH = assets.pipe.height;
+  if (assets.pipe.loaded) {
+    const scaleX = 1.28;
+    const pipeW = assets.pipe.width * scaleX;
+    const pipeH = assets.pipe.height;
 
-        const topVisibleH = Math.min(pipeH, y);
-        if (topVisibleH > 0) {
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.scale(1, -1);
-          ctx.drawImage(
-            assets.pipe,
-            0,
-            pipeH - topVisibleH,
-            assets.pipe.width,
-            topVisibleH,
-            0,
-            -topVisibleH,
-            pipeW,
-            topVisibleH
-          );
-          ctx.restore();
-        }
+    // -------- TOP PIPE (FULL HEIGHT) --------
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, -1);
 
-        const bottomStart = y + gap;
-        const bottomVisibleH = Math.min(pipeH, HEIGHT - bottomStart);
-        if (bottomVisibleH > 0) {
-          ctx.drawImage(
-            assets.pipe,
-            0,
-            0,
-            assets.pipe.width,
-            bottomVisibleH,
-            x,
-            bottomStart,
-            pipeW,
-            bottomVisibleH
-          );
-        }
+    ctx.drawImage(
+      assets.pipe,
+      0, 0,
+      assets.pipe.width, pipeH,
+      0, -pipeH,
+      pipeW, pipeH
+    );
 
-        return;
-      }
+    ctx.restore();
 
-      const pipeW = 92;
-      const capH = 18;
+    // -------- BOTTOM PIPE --------
+    ctx.drawImage(
+      assets.pipe,
+      0, 0,
+      assets.pipe.width, pipeH,
+      x, y + gap,
+      pipeW, pipeH
+    );
 
-      ctx.fillStyle = "#51b95d";
-      ctx.fillRect(x, 0, pipeW, y);
-      ctx.fillRect(x, y + gap, pipeW, HEIGHT - (y + gap));
+    return;
+  }
 
-      ctx.fillStyle = "#3a9848";
-      ctx.fillRect(x - 6, y - capH, pipeW + 12, capH);
-      ctx.fillRect(x - 6, y + gap, pipeW + 12, capH);
-    }
+  // fallback (unchanged)
+  const pipeW = 92;
+  const capH = 18;
+
+  ctx.fillStyle = "#51b95d";
+  ctx.fillRect(x, 0, pipeW, y);
+  ctx.fillRect(x, y + gap, pipeW, HEIGHT - (y + gap));
+
+  ctx.fillStyle = "#3a9848";
+  ctx.fillRect(x - 6, y - capH, pipeW + 12, capH);
+  ctx.fillRect(x - 6, y + gap, pipeW + 12, capH);
+}
 
     function drawMusicStaffLines() {
       const panelW = 200;
