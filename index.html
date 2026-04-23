@@ -113,13 +113,13 @@
     const GROUND_Y = HEIGHT - 60;
 
     const FALL_SPEED = 1.0;
-    const FALL_ACCEL = 0.02;
+    const FALL_ACCEL = 0.015;
     const MAX_FALL_SPEED = 2.0;
 
     const RMS_GATE = 0.0005;
     const PITCH_LOCK_ENABLED = true;
     const RESET_LOCK_EACH_PIPE = true;
-    const DETECTED_OK_GRACE = 8;
+    const DETECTED_OK_GRACE = 60;
 
     const SAMPLE_RATE = 44100;
     const MIN_FREQ = 70;
@@ -168,7 +168,7 @@
     };
 
     const game = {
-      state: STATE_CALIBRATE,
+      state: STATE_MENU,
       difficulty: "easy",
       uiTimer: 0,
       gameOverTimer: 0,
@@ -796,15 +796,15 @@
       } else {
         // 🔴 AFTER start → normal gameplay
         if (idx !== null) {
-          const margin = 120;
-          const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
-          game.birdY += (target - game.birdY) * 0.12;
-          game.birdFallSpeed = FALL_SPEED;
-        } else {
-          game.birdY += game.birdFallSpeed;
-          game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
-          game.lockedIdx = null;
-        }
+        const margin = 120;
+        const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
+        game.birdY += (target - game.birdY) * 0.12;
+        game.birdFallSpeed = FALL_SPEED;
+      } else {
+        game.birdY += game.birdFallSpeed;
+        game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
+        // ❌ DO NOT reset lockedIdx here
+      }
       }
 
         if (game.birdY < CEILING_Y || game.birdY > GROUND_Y) {
@@ -865,23 +865,7 @@
 
       drawBackground();
 
-      if (game.state === STATE_CALIBRATE) {
-        drawTextGame("MIC CALIBRATION", WIDTH / 2, 110, { size: 52, center: true });
-        drawTextGame("SPEAK / SING NOW", WIDTH / 2, 180, { size: 28, center: true });
-        drawTextGame("Enable the microphone, then press Start Game", WIDTH / 2, 250, { size: 24, center: true });
-        drawRmsBar(WIDTH / 2 - 220, 310, 440, 24, rms);
-        drawTextGame(`INPUT RMS ${rms.toFixed(4)}`, WIDTH / 2, 360, { size: 26, center: true });
-        drawTextGame(
-          game.audio.enabled ? "MIC OK! PRESS START GAME" : "MIC NOT READY",
-          WIDTH / 2,
-          500,
-          {
-            size: 26,
-            center: true,
-            color: game.audio.enabled ? "#78ffb4" : "#ffe678",
-          }
-        );
-      } else if (game.state === STATE_MENU) {
+        if (game.state === STATE_MENU) {
         const titleY = 120 + Math.sin(game.uiTimer * 0.05) * 10;
         drawTextGame("SOLFEGE BIRD", WIDTH / 2, titleY, { size: 58, center: true });
         drawBird(WIDTH / 2, HEIGHT / 2 + Math.sin(game.uiTimer * 0.08) * 12);
@@ -944,7 +928,7 @@
 
     micBtn.addEventListener("click", async () => {
       await enableMic();
-      if (game.audio.enabled && game.state === STATE_CALIBRATE) game.state = STATE_MENU;
+      game.state = STATE_MENU; // always go to menu after mic
     });
 
     startBtn.addEventListener("click", () => {
