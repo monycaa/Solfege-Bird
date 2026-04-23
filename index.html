@@ -775,13 +775,18 @@
 
       if (game.state === STATE_PLAYING) {
         // detect when gameplay really starts
-      if (!game.started && game.pipeX + getPipeSize().w < 150) {
-        game.started = true;
-        game.startGraceTimer = 50; // smooth transition
-      }
+      if (!game.started) {
+      game.started = true;
+      game.startGraceTimer = 40;
+    }
        if (detectedIdx !== null) {
-        game.lockedIdx = detectedIdx;
         game.lastDetectedOkTimer = DETECTED_OK_GRACE;
+      
+        // only update lock if stable
+        if (game.startGraceTimer > 0 || game.started) {
+          game.lockedIdx = detectedIdx;
+        }
+      
       } else {
         game.lastDetectedOkTimer = Math.max(0, game.lastDetectedOkTimer - 1);
       }
@@ -810,14 +815,19 @@
         
         // AFTER start → hover for a moment (THIS WAS MISSING)
         else if (game.startGraceTimer > 0) {
-          game.startGraceTimer--;
-        
-          const idxHold = game.lockedIdx ?? Math.floor(SCALE_NOTES.length / 2);
-          const target = HEIGHT - margin - idxHold * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
-        
-          game.birdY += (target - game.birdY) * 0.05;
-          game.birdFallSpeed = 0;
+        game.startGraceTimer--;
+      
+        // allow real control immediately
+        if (idx !== null) {
+          const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
+          game.birdY += (target - game.birdY) * 0.18;
+        } else {
+          // slight float if no voice
+          game.birdY += Math.sin(game.uiTimer * 0.08) * 0.3;
         }
+      
+        game.birdFallSpeed = 0;
+      }
         
         // NORMAL gameplay
         else if (idx !== null) {
@@ -843,7 +853,7 @@
         const pipeSize = getPipeSize();
 
         if (game.pipeX < -pipeSize.w) {
-          game.pipeX = WIDTH + 120;
+          game.pipeX = WIDTH + 250;
           game.pipeY = randInt(120, HEIGHT - game.gap - 120);
           game.pipeScored = false;
           spawnedNewPipe = true;
