@@ -164,7 +164,7 @@
       bird: loadImage("./assets/bird/bird.png"),
       pipe: loadImage("./assets/pipes/pipe.png"),
       dieAudio: loadAudio("./assets/sounds/die.wav"),
-      uiAudio: null,
+      uiAudio: loadAudio("./assets/sounds/point.wav"),
     };
 
     const game = {
@@ -341,10 +341,10 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
         });
 
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -360,6 +360,7 @@
         game.audio.enabled = true;
 
         statusText.textContent = "Microphone enabled";
+        playAudio(assets.uiAudio);
       } catch (err) {
         console.error(err);
         statusText.textContent = "Microphone permission failed";
@@ -380,45 +381,31 @@
       a.currentRms = rms;
 
       let pitch = 0;
-
       if (rms >= RMS_GATE) {
         const slice = a.timeData.slice(0, WINDOW_SIZE);
-        pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate);
+        pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate || SAMPLE_RATE);
       }
-      
-      // ✅ filter noise
-      if (rms < 0.001) pitch = 0;
-      if (pitch < 80) pitch = 0;
-      if (pitch > 600) pitch = 0;
-      
+
       if (pitch > 0) {
         a.history.push(pitch);
         if (a.history.length > 5) a.history.shift();
-      
         const sorted = [...a.history].sort((m, n) => m - n);
         a.currentPitch = sorted[Math.floor(sorted.length / 2)];
       } else {
-        // ✅ single source of truth
-        a.history = [];
         a.currentPitch = 0;
+        a.history = [];
       }
 
       let detected = null;
       let cents = 0;
       if (a.currentPitch > 0) {
-      const [idx, centsVal, correctedFreq] = bestNoteWithOctaveFix(
-        a.currentPitch,
-        DIFFICULTY_SETTINGS[game.difficulty].tolerance
-      );
-    
-      detected = idx;
-      cents = centsVal;
-    
-      // ✅ IMPORTANT: use corrected frequency
-      if (correctedFreq > 0) {
-        a.currentPitch = correctedFreq;
+        const [idx, centsVal] = bestNoteWithOctaveFix(
+          a.currentPitch,
+          DIFFICULTY_SETTINGS[game.difficulty].tolerance
+        );
+        detected = idx;
+        cents = centsVal;
       }
-    }
 
       a.currentNoteIndex = detected;
       a.currentCents = cents;
