@@ -119,7 +119,7 @@
     const RMS_GATE = 0.003;
     const PITCH_LOCK_ENABLED = true;
     const RESET_LOCK_EACH_PIPE = true;
-    const DETECTED_OK_GRACE = 18;
+    const DETECTED_OK_GRACE = 8;
 
     const SAMPLE_RATE = 44100;
     const MIN_FREQ = 180;
@@ -746,9 +746,22 @@
       const rms = game.audio.currentRms;
 
       if (game.state === STATE_PLAYING) {
-        if (detectedIdx !== null) game.lockedIdx = detectedIdx;
+       if (detectedIdx !== null) {
+        game.lockedIdx = detectedIdx;
+        game.lastDetectedOkTimer = DETECTED_OK_GRACE;
+      } else {
+        game.lastDetectedOkTimer = Math.max(0, game.lastDetectedOkTimer - 1);
+      }
+        
+       let idx = null;
 
-        const idx = PITCH_LOCK_ENABLED && game.lockedIdx !== null ? game.lockedIdx : detectedIdx;
+        if (detectedIdx !== null) {
+          idx = detectedIdx;
+        } else if (game.lastDetectedOkTimer > 0 && game.lockedIdx !== null) {
+          idx = game.lockedIdx; // short grace period
+        } else {
+          idx = null; // 🚨 fall
+        }
 
         if (idx !== null) {
           const margin = 120;
@@ -757,7 +770,14 @@
           game.birdFallSpeed = FALL_SPEED;
         } else {
           game.birdY += game.birdFallSpeed;
-          game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
+        
+          game.birdFallSpeed = Math.min(
+            MAX_FALL_SPEED,
+            game.birdFallSpeed + FALL_ACCEL
+          );
+        
+          // 🔥 ADD THIS
+          game.lockedIdx = null;
         }
 
         if (game.birdY < CEILING_Y || game.birdY > GROUND_Y) {
@@ -801,9 +821,6 @@
           game.gameOverTimer = 0;
           playAudio(assets.dieAudio);
         }
-
-        if (detectedIdx !== null) game.lastDetectedOkTimer = DETECTED_OK_GRACE;
-        else game.lastDetectedOkTimer = Math.max(0, game.lastDetectedOkTimer - 1);
 
         const pipeCenterX = game.pipeX + pipeSize.w / 2;
         if (!game.pipeScored && 150 > pipeCenterX) {
