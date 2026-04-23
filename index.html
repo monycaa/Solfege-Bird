@@ -182,6 +182,8 @@
       pipeScored: false,
       lastDetectedOkTimer: 0,
       lockedIdx: null,
+      started: false,
+      
       audio: {
         enabled: false,
         audioContext: null,
@@ -220,6 +222,7 @@
     }
 
     function resetRun() {
+      game.started = false;
       game.birdY = HEIGHT / 2;
       game.birdFallSpeed = FALL_SPEED;
       game.pipeX = WIDTH + 120;
@@ -764,6 +767,10 @@
       const rms = game.audio.currentRms;
 
       if (game.state === STATE_PLAYING) {
+        // detect when gameplay really starts
+      if (!game.started && game.pipeX + getPipeSize().w < 150) {
+        game.started = true;
+      }
        if (detectedIdx !== null) {
         game.lockedIdx = detectedIdx;
         game.lastDetectedOkTimer = DETECTED_OK_GRACE;
@@ -781,6 +788,13 @@
           idx = null; // 🚨 fall
         }
 
+        if (!game.started) {
+        // 🟢 BEFORE first pipe → bird stays still
+        game.birdY = HEIGHT / 2;
+        game.birdFallSpeed = FALL_SPEED;
+      
+      } else {
+        // 🔴 AFTER start → normal gameplay
         if (idx !== null) {
           const margin = 120;
           const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
@@ -788,15 +802,10 @@
           game.birdFallSpeed = FALL_SPEED;
         } else {
           game.birdY += game.birdFallSpeed;
-        
-          game.birdFallSpeed = Math.min(
-            MAX_FALL_SPEED,
-            game.birdFallSpeed + FALL_ACCEL
-          );
-        
-          // 🔥 ADD THIS
+          game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
           game.lockedIdx = null;
         }
+      }
 
         if (game.birdY < CEILING_Y || game.birdY > GROUND_Y) {
           game.state = STATE_GAME_OVER;
