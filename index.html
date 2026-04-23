@@ -183,6 +183,7 @@
       lastDetectedOkTimer: 0,
       lockedIdx: null,
       started: false,
+      startGraceTimer: 0,
       
       audio: {
         enabled: false,
@@ -770,6 +771,7 @@
         // detect when gameplay really starts
       if (!game.started && game.pipeX + getPipeSize().w < 150) {
         game.started = true;
+        game.startGraceTimer = 50; // smooth transition
       }
        if (detectedIdx !== null) {
         game.lockedIdx = detectedIdx;
@@ -788,24 +790,41 @@
           idx = null; // 🚨 fall
         }
 
-        if (!game.started) {
-        // 🟢 BEFORE first pipe → bird stays still
-        game.birdY = HEIGHT / 2;
-        game.birdFallSpeed = FALL_SPEED;
-      
-      } else {
-        // 🔴 AFTER start → normal gameplay
-        if (idx !== null) {
         const margin = 120;
-        const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
-        game.birdY += (target - game.birdY) * 0.12;
-        game.birdFallSpeed = FALL_SPEED;
-      } else {
-        game.birdY += game.birdFallSpeed;
-        game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
-        // ❌ DO NOT reset lockedIdx here
-      }
-      }
+
+        // 🟢 BEFORE first pipe
+        if (!game.started) {
+          game.birdFallSpeed = 0;
+          game.birdY += Math.sin(game.uiTimer * 0.08) * 0.6;
+        
+          if (game.lockedIdx === null) {
+            game.lockedIdx = Math.floor(SCALE_NOTES.length / 2);
+          }
+        }
+        
+        // 🟡 AFTER start → hover for a moment (THIS WAS MISSING)
+        else if (game.startGraceTimer > 0) {
+          game.startGraceTimer--;
+        
+          const idxHold = game.lockedIdx ?? Math.floor(SCALE_NOTES.length / 2);
+          const target = HEIGHT - margin - idxHold * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
+        
+          game.birdY += (target - game.birdY) * 0.05;
+          game.birdFallSpeed = 0;
+        }
+        
+        // 🔵 NORMAL gameplay
+        else if (idx !== null) {
+          const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
+          game.birdY += (target - game.birdY) * 0.12;
+          game.birdFallSpeed = FALL_SPEED;
+        }
+        
+        // 🔴 FALL
+        else {
+          game.birdY += game.birdFallSpeed;
+          game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
+        }
 
         if (game.birdY < CEILING_Y || game.birdY > GROUND_Y) {
           game.state = STATE_GAME_OVER;
@@ -938,6 +957,7 @@
         return;
       }
       resetRun();
+      game.startGraceTimer = 50;
       game.state = STATE_PLAYING;
       playAudio(assets.uiAudio);
     });
