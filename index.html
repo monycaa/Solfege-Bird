@@ -503,51 +503,50 @@
       return { w: 92, h: 360 };
     }
 
-    function drawPipe(x, y, gap) {
-  if (assets.pipe.loaded) {
-    const scaleX = 1.28;
-    const pipeW = assets.pipe.width * scaleX;
-    const pipeH = assets.pipe.height;
+    function drawPipe(x, gapStart, gap) {
+      if (assets.pipe.loaded) {
+        const scaleX = 1.28;
+        const pipeW = assets.pipe.width * scaleX;
+    
+        // ✅ TOP PIPE (fills from ceiling to gap)
+        ctx.save();
+        ctx.translate(x, gapStart);
+        ctx.scale(1, -1);
+    
+        ctx.drawImage(
+          assets.pipe,
+          0, 0,
+          assets.pipe.width,
+          assets.pipe.height,
+          0, 0,
+          pipeW,
+          gapStart   // 🔥 THIS is the key
+        );
+    
+        ctx.restore();
+    
+        // ✅ BOTTOM PIPE (fills from gap to ground)
+        ctx.drawImage(
+          assets.pipe,
+          0, 0,
+          assets.pipe.width,
+          assets.pipe.height,
+          x,
+          gapStart + gap,
+          pipeW,
+          HEIGHT - (gapStart + gap) // 🔥 THIS is also key
+        );
+    
+        return;
+      }
 
-    // -------- TOP PIPE (FULL HEIGHT) --------
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(1, -1);
-
-    ctx.drawImage(
-      assets.pipe,
-      0, 0,
-      assets.pipe.width, pipeH,
-      0, -pipeH,
-      pipeW, pipeH
-    );
-
-    ctx.restore();
-
-    // -------- BOTTOM PIPE --------
-    ctx.drawImage(
-      assets.pipe,
-      0, 0,
-      assets.pipe.width, pipeH,
-      x, y + gap,
-      pipeW, pipeH
-    );
-
-    return;
-  }
-
-  // fallback (unchanged)
-  const pipeW = 92;
-  const capH = 18;
-
-  ctx.fillStyle = "#51b95d";
-  ctx.fillRect(x, 0, pipeW, y);
-  ctx.fillRect(x, y + gap, pipeW, HEIGHT - (y + gap));
-
-  ctx.fillStyle = "#3a9848";
-  ctx.fillRect(x - 6, y - capH, pipeW + 12, capH);
-  ctx.fillRect(x - 6, y + gap, pipeW + 12, capH);
-}
+      // fallback
+      const pipeW = 92;
+    
+      ctx.fillStyle = "#51b95d";
+      ctx.fillRect(x, 0, pipeW, gapStart);
+      ctx.fillRect(x, gapStart + gap, pipeW, HEIGHT - (gapStart + gap));
+    }
 
     function drawMusicStaffLines() {
       const panelW = 200;
