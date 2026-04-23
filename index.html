@@ -116,7 +116,7 @@
     const FALL_ACCEL = 0.015;
     const MAX_FALL_SPEED = 2.0;
 
-    const RMS_GATE = 0.0005;
+    const RMS_GATE = 0.002;
     const PITCH_LOCK_ENABLED = true;
     const RESET_LOCK_EACH_PIPE = true;
     const DETECTED_OK_GRACE = 60;
@@ -196,6 +196,7 @@
         currentRms: 0,
         history: [],
         timeData: null,
+        stableFrames: 0,
       },
     };
 
@@ -389,23 +390,34 @@
         const slice = a.timeData.slice(0, WINDOW_SIZE);
         pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate);
       }
+
+      if (pitch > 0 && (pitch < 100 || pitch > 500)) {
+        pitch = 0;
+      }
       
       // ✅ filter noise
-      if (rms < 0.001) pitch = 0;
-      if (pitch < 80) pitch = 0;
-      if (pitch > 600) pitch = 0;
+      if (rms < 0.003) pitch = 0;
       
       if (pitch > 0) {
+      a.stableFrames++;
+    
+      if (a.stableFrames > 3) {
         a.history.push(pitch);
         if (a.history.length > 5) a.history.shift();
-      
+    
         const sorted = [...a.history].sort((m, n) => m - n);
         a.currentPitch = sorted[Math.floor(sorted.length / 2)];
       } else {
-        // ✅ single source of truth
-        a.history = [];
-        a.currentPitch = 0;
+        // prevent ghost pitch
+        a.currentPitch *= 0.9; // smooth fade
+        if (a.currentPitch < 1) a.currentPitch = 0;
       }
+    
+    } else {
+      a.stableFrames = 0;
+      a.history = [];
+      a.currentPitch = 0;
+    }
 
       let detected = null;
       let cents = 0;
@@ -418,7 +430,7 @@
       detected = idx;
       cents = centsVal;
     
-      // ✅ IMPORTANT: use corrected frequency
+      // IMPORTANT: use corrected frequency
       if (correctedFreq > 0) {
         a.currentPitch = correctedFreq;
       }
@@ -528,14 +540,28 @@
     if (assets.pipe.loaded) {
       const img = assets.pipe;
   
-      // 🔼 TOP PIPE (tile upward)
+      //  TOP PIPE (tile upward)
       let y = gapStart;
+
       while (y > 0) {
         y -= img.height;
-        ctx.drawImage(img, x, y, pipeW, img.height);
+      
+        ctx.save();
+        ctx.translate(x + pipeW / 2, y + img.height / 2);
+        ctx.scale(1, -1); // flip vertically
+      
+        ctx.drawImage(
+          img,
+          -pipeW / 2,
+          -img.height / 2,
+          pipeW,
+          img.height
+        );
+      
+        ctx.restore();
       }
   
-      // 🔽 BOTTOM PIPE (tile downward)
+      //  BOTTOM PIPE (tile downward)
       y = gapStart + gap;
       while (y < HEIGHT) {
         ctx.drawImage(img, x, y, pipeW, img.height);
@@ -543,7 +569,7 @@
       }
   
     } else {
-      // fallback (INSIDE function ✅)
+      // fallback (INSIDE function )
       ctx.fillStyle = "#51b95d";
       ctx.fillRect(x, 0, pipeW, gapStart);
       ctx.fillRect(x, gapStart + gap, pipeW, HEIGHT - (gapStart + gap));
@@ -772,7 +798,7 @@
 
         const margin = 120;
 
-        // 🟢 BEFORE first pipe
+        // BEFORE first pipe
         if (!game.started) {
           game.birdFallSpeed = 0;
           game.birdY += Math.sin(game.uiTimer * 0.08) * 0.6;
@@ -782,7 +808,7 @@
           }
         }
         
-        // 🟡 AFTER start → hover for a moment (THIS WAS MISSING)
+        // AFTER start → hover for a moment (THIS WAS MISSING)
         else if (game.startGraceTimer > 0) {
           game.startGraceTimer--;
         
@@ -793,14 +819,14 @@
           game.birdFallSpeed = 0;
         }
         
-        // 🔵 NORMAL gameplay
+        // NORMAL gameplay
         else if (idx !== null) {
           const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
           game.birdY += (target - game.birdY) * 0.12;
           game.birdFallSpeed = FALL_SPEED;
         }
         
-        // 🔴 FALL
+        // FALL
         else {
           game.birdY += game.birdFallSpeed;
           game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
@@ -937,7 +963,7 @@
         return;
       }
       resetRun();
-      game.startGraceTimer = 50;
+      game.startGraceTimer = 80;
       game.state = STATE_PLAYING;
       playAudio(assets.uiAudio);
     });
