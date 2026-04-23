@@ -262,7 +262,12 @@
     function bestNoteWithOctaveFix(freq, toleranceCents) {
       if (freq <= 0) return [null, 0, 0];
 
-      const candidates = [freq, freq * 0.5, freq * 2.0];
+      const candidates = [
+        freq,
+        freq * 0.5,
+        freq * 0.25,
+        freq * 2.0,
+      ];
       let bestIdx = null;
       let bestAbs = Infinity;
       let bestCents = 0;
