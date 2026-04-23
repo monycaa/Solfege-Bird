@@ -732,6 +732,13 @@
 
     function updateGame() {
       updateAudio();
+      console.log(
+        "pipe loaded:",
+        assets.pipe.loaded,
+        "size:",
+        assets.pipe.width,
+        assets.pipe.height
+      );
       game.uiTimer += 1;
 
       const pitchHz = game.audio.currentPitch;
