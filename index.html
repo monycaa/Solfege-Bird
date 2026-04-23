@@ -518,57 +518,37 @@
       ctx.restore();
     }
 
-    function getPipeSize() {
-      if (assets.pipe.loaded) {
-        return { w: assets.pipe.width * 1.28, h: assets.pipe.height };
-      }
-      return { w: 92, h: 360 };
+   function getPipeSize() {
+      return { w: 80, h: assets.pipe.height };
     }
 
     function drawPipe(x, gapStart, gap) {
-      if (assets.pipe.loaded) {
-        const scaleX = 1.28;
-        const pipeW = assets.pipe.width * scaleX;
-    
-        // ✅ TOP PIPE (fills from ceiling to gap)
-        ctx.save();
-        ctx.translate(x, gapStart);
-        ctx.scale(1, -1);
-    
-        ctx.drawImage(
-          assets.pipe,
-          0, 0,
-          assets.pipe.width,
-          assets.pipe.height,
-          0, 0,
-          pipeW,
-          gapStart   // 🔥 THIS is the key
-        );
-    
-        ctx.restore();
-    
-        // ✅ BOTTOM PIPE (fills from gap to ground)
-        ctx.drawImage(
-          assets.pipe,
-          0, 0,
-          assets.pipe.width,
-          assets.pipe.height,
-          x,
-          gapStart + gap,
-          pipeW,
-          HEIGHT - (gapStart + gap) // 🔥 THIS is also key
-        );
-    
-        return;
+    const pipeW = 80;
+  
+    if (assets.pipe.loaded) {
+      const img = assets.pipe;
+  
+      // 🔼 TOP PIPE (tile upward)
+      let y = gapStart;
+      while (y > 0) {
+        y -= img.height;
+        ctx.drawImage(img, x, y, pipeW, img.height);
       }
-
-      // fallback
-      const pipeW = 92;
-    
+  
+      // 🔽 BOTTOM PIPE (tile downward)
+      y = gapStart + gap;
+      while (y < HEIGHT) {
+        ctx.drawImage(img, x, y, pipeW, img.height);
+        y += img.height;
+      }
+  
+    } else {
+      // fallback (INSIDE function ✅)
       ctx.fillStyle = "#51b95d";
       ctx.fillRect(x, 0, pipeW, gapStart);
       ctx.fillRect(x, gapStart + gap, pipeW, HEIGHT - (gapStart + gap));
     }
+}
 
     function drawMusicStaffLines() {
       const panelW = 200;
