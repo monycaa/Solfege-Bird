@@ -399,13 +399,19 @@
       let detected = null;
       let cents = 0;
       if (a.currentPitch > 0) {
-        const [idx, centsVal] = bestNoteWithOctaveFix(
-          a.currentPitch,
-          DIFFICULTY_SETTINGS[game.difficulty].tolerance
-        );
-        detected = idx;
-        cents = centsVal;
+      const [idx, centsVal, correctedFreq] = bestNoteWithOctaveFix(
+        a.currentPitch,
+        DIFFICULTY_SETTINGS[game.difficulty].tolerance
+      );
+    
+      detected = idx;
+      cents = centsVal;
+    
+      // ✅ IMPORTANT: use corrected frequency
+      if (correctedFreq > 0) {
+        a.currentPitch = correctedFreq;
       }
+    }
 
       a.currentNoteIndex = detected;
       a.currentCents = cents;
