@@ -341,10 +341,10 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         });
 
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -381,19 +381,27 @@
       a.currentRms = rms;
 
       let pitch = 0;
+
       if (rms >= RMS_GATE) {
         const slice = a.timeData.slice(0, WINDOW_SIZE);
-        pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate || SAMPLE_RATE);
+        pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate);
       }
-
+      
+      // ✅ filter noise
+      if (rms < 0.001) pitch = 0;
+      if (pitch < 80) pitch = 0;
+      if (pitch > 600) pitch = 0;
+      
       if (pitch > 0) {
         a.history.push(pitch);
         if (a.history.length > 5) a.history.shift();
+      
         const sorted = [...a.history].sort((m, n) => m - n);
         a.currentPitch = sorted[Math.floor(sorted.length / 2)];
       } else {
-        a.currentPitch = 0;
+        // ✅ single source of truth
         a.history = [];
+        a.currentPitch = 0;
       }
 
       let detected = null;
