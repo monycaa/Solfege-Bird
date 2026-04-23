@@ -119,7 +119,7 @@
     const RMS_GATE = 0.002;
     const PITCH_LOCK_ENABLED = true;
     const RESET_LOCK_EACH_PIPE = true;
-    const DETECTED_OK_GRACE = 60;
+    const DETECTED_OK_GRACE = 150;
 
     const SAMPLE_RATE = 44100;
     const MIN_FREQ = 70;
@@ -268,11 +268,14 @@
       if (freq <= 0) return [null, 0, 0];
 
       const candidates = [
-        freq,
-        freq * 0.5,
-        freq * 0.25,
-        freq * 2.0,
-      ];
+  freq,
+  freq * 0.5,
+  freq * 0.25,
+  freq * 0.125, // NEW (very low male voice)
+  freq * 2.0,
+  freq * 4.0    // NEW (high voice)
+];
+
       let bestIdx = null;
       let bestAbs = Infinity;
       let bestCents = 0;
@@ -295,6 +298,12 @@
       return [null, bestCents, bestFreq];
     }
 
+    function normalizeToGameRange(freq) {
+  while (freq < 220) freq *= 2;   // push up
+  while (freq > 880) freq *= 0.5; // push down
+  return freq;
+}
+	
     function detectPitchAutoCorrelation(buf, sampleRate) {
       const n = buf.length;
       if (!n) return 0;
@@ -391,7 +400,7 @@
         pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate);
       }
 
-      if (pitch > 0 && (pitch < 100 || pitch > 500)) {
+      if (pitch > 0 && (pitch < 60 || pitch > 700)) {
         pitch = 0;
       }
       
@@ -432,8 +441,8 @@
     
       // IMPORTANT: use corrected frequency
       if (correctedFreq > 0) {
-        a.currentPitch = correctedFreq;
-      }
+  a.currentPitch = normalizeToGameRange(correctedFreq);
+		}
     }
 
       a.currentNoteIndex = detected;
@@ -795,10 +804,19 @@
 
         if (detectedIdx !== null) {
           idx = detectedIdx;
+        
+          // lock immediately when singing
+          game.lockedIdx = detectedIdx;
+          game.lastDetectedOkTimer = DETECTED_OK_GRACE;
+        
         } else if (game.lastDetectedOkTimer > 0 && game.lockedIdx !== null) {
-          idx = game.lockedIdx; // short grace period
+          idx = game.lockedIdx;
+        
+          // ⏳ slowly decrease timer
+          game.lastDetectedOkTimer--;
+        
         } else {
-          idx = null; // 🚨 fall
+          idx = null;
         }
 
         const margin = 120;
@@ -838,9 +856,11 @@
         
         // FALL
         else {
-          game.birdY += game.birdFallSpeed;
-          game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
-        }
+        // softer fall (feels less punishing)
+        game.birdFallSpeed += FALL_ACCEL * 0.5;
+        game.birdFallSpeed = Math.min(MAX_FALL_SPEED * 0.7, game.birdFallSpeed);
+        game.birdY += game.birdFallSpeed;
+      }
 
         if (game.birdY < CEILING_Y || game.birdY > GROUND_Y) {
           game.state = STATE_GAME_OVER;
