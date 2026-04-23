@@ -1,237 +1,975 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Solfege Bird</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solfege Bird Web</title>
+  <style>
+    @font-face {
+      font-family: "GameUI";
+      src: url("assets/fonts/ui.otf") format("opentype");
+      font-display: swap;
+    }
 
-<style>
-@font-face {
-  font-family: "GameUI";
-  src: url("./assets/fonts/ui.otf");
-}
+    :root {
+      --white: #f5faff;
+    }
 
-body {
-  margin: 0;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(#73c6fb, #d9f3ff);
-  font-family: GameUI, sans-serif;
-}
+    * { box-sizing: border-box; }
 
-.wrap { width: 900px; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, #73c6fb, #d9f3ff);
+      color: var(--white);
+      font-family: GameUI, Arial, Helvetica, sans-serif;
+    }
 
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
+    .wrap {
+      width: min(100vw, 980px);
+      padding: 16px;
+    }
 
-button {
-  padding: 10px;
-  border-radius: 12px;
-  border: none;
-  cursor: pointer;
-}
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
 
-canvas {
-  width: 100%;
-  border-radius: 20px;
-}
-</style>
+    .left, .right {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button, select {
+      border: 0;
+      border-radius: 16px;
+      padding: 10px 14px;
+      font-size: 14px;
+      background: rgba(255,255,255,0.92);
+      color: #172033;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .note {
+      font-size: 13px;
+      opacity: 0.95;
+      color: #17304a;
+      background: rgba(255,255,255,0.7);
+      padding: 10px 12px;
+      border-radius: 14px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    }
+
+    canvas {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 24px;
+      box-shadow: 0 18px 42px rgba(0,0,0,0.18);
+      display: block;
+      background: #93d6ff;
+    }
+  </style>
 </head>
-
 <body>
-<div class="wrap">
-  <div class="toolbar">
-    <div>
-      <button id="micBtn">Enable Microphone</button>
-      <button id="startBtn">Start Game</button>
+  <div class="wrap">
+    <div class="toolbar">
+      <div class="left">
+        <button id="micBtn">Enable Microphone</button>
+        <button id="startBtn">Start Game</button>
+        <select id="difficultySelect">
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+      <div class="right">
+        <div class="note" id="statusText">Mic not enabled</div>
+      </div>
     </div>
-    <div id="statusText">Mic not enabled</div>
+    <canvas id="game" width="800" height="600"></canvas>
   </div>
 
-  <canvas id="game" width="800" height="600"></canvas>
-</div>
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const micBtn = document.getElementById("micBtn");
+    const startBtn = document.getElementById("startBtn");
+    const difficultySelect = document.getElementById("difficultySelect");
+    const statusText = document.getElementById("statusText");
 
-<script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+    const WIDTH = 800;
+    const HEIGHT = 600;
+    const CEILING_Y = 40;
+    const GROUND_Y = HEIGHT - 60;
 
-const micBtn = document.getElementById("micBtn");
-const startBtn = document.getElementById("startBtn");
-const statusText = document.getElementById("statusText");
+    const FALL_SPEED = 1.0;
+    const FALL_ACCEL = 0.02;
+    const MAX_FALL_SPEED = 2.0;
 
-const WIDTH = 800;
-const HEIGHT = 600;
+    const RMS_GATE = 0.0005;
+    const PITCH_LOCK_ENABLED = true;
+    const RESET_LOCK_EACH_PIPE = true;
+    const DETECTED_OK_GRACE = 8;
 
-const STATE_MENU = "menu";
-const STATE_PLAYING = "playing";
+    const SAMPLE_RATE = 44100;
+    const MIN_FREQ = 70;
+    const MAX_FREQ = 1000;
+    const WINDOW_SIZE = 2048;
 
-const FALL_SPEED = 1;
-const FALL_ACCEL = 0.03;
-const MAX_FALL_SPEED = 3;
+    const STATE_CALIBRATE = "calibrate";
+    const STATE_MENU = "menu";
+    const STATE_PLAYING = "playing";
+    const STATE_GAME_OVER = "game_over";
 
-const game = {
-  state: STATE_MENU,
-  started: false,
-  countdown: 0,
-  countdownTimer: 0,
-  birdY: HEIGHT / 2,
-  birdFallSpeed: FALL_SPEED,
-  pipeX: WIDTH + 120,
-  pipeY: 150,
-  gap: 200,
-  audio: {
-    enabled: false,
-    analyser: null,
-    audioContext: null,
-    timeData: null,
-    currentPitch: 0,
-    currentRms: 0,
-  }
-};
+    const SCALE_NOTES = [
+      ["C4", "Do", 261.63],
+      ["D4", "Re", 293.66],
+      ["E4", "Mi", 329.63],
+      ["F4", "Fa", 349.23],
+      ["G4", "Sol", 392.0],
+      ["A4", "La", 440.0],
+      ["B4", "Si", 493.88],
+      ["C5", "Do", 523.25],
+    ];
 
-/* ================= MIC ================= */
-async function enableMic() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true }
-  });
+    const NOTE_COLORS = {
+      C4: "#ffbe50",
+      D4: "#78c8ff",
+      E4: "#78ebaa",
+      F4: "#ffa05a",
+      G4: "#ffd26e",
+      A4: "#ff8caa",
+      B4: "#b48cff",
+      C5: "#78c8ff",
+    };
 
-  const ctxAudio = new AudioContext();
-  const src = ctxAudio.createMediaStreamSource(stream);
-  const analyser = ctxAudio.createAnalyser();
-  analyser.fftSize = 2048;
+    const DIFFICULTY_SETTINGS = {
+      easy: { speed: 3.5, tolerance: 70 },
+      medium: { speed: 5.0, tolerance: 45 },
+      hard: { speed: 6.5, tolerance: 28 },
+    };
 
-  src.connect(analyser);
+    const assets = {
+      background: loadImage("./assets/background/background.jpg"),
+      bird: loadImage("./assets/bird/bird.png"),
+      pipe: loadImage("./assets/pipes/pipe.png"),
+      dieAudio: loadAudio("./assets/sounds/die.wav"),
+      uiAudio: null,
+    };
 
-  game.audio.analyser = analyser;
-  game.audio.audioContext = ctxAudio;
-  game.audio.timeData = new Float32Array(analyser.fftSize);
-  game.audio.enabled = true;
+    const game = {
+      state: STATE_CALIBRATE,
+      difficulty: "easy",
+      uiTimer: 0,
+      gameOverTimer: 0,
+      score: 0,
+      displayScore: 0,
+      birdY: HEIGHT / 2,
+      birdFallSpeed: FALL_SPEED,
+      pipeX: WIDTH + 120,
+      pipeY: 150,
+      gap: 200,
+      pipeScored: false,
+      lastDetectedOkTimer: 0,
+      lockedIdx: null,
+      audio: {
+        enabled: false,
+        audioContext: null,
+        analyser: null,
+        source: null,
+        currentPitch: 0,
+        currentNoteIndex: null,
+        currentCents: 0,
+        currentRms: 0,
+        history: [],
+        timeData: null,
+      },
+    };
 
-  statusText.textContent = "Mic enabled";
-}
+    function loadImage(src) {
+      const img = new Image();
+      img.src = src;
+      img.loaded = false;
+      img.onload = () => { img.loaded = true; };
+      img.onerror = () => { img.loaded = false; };
+      return img;
+    }
 
-/* ================= AUDIO ================= */
-function updateAudio() {
-  const a = game.audio;
-  if (!a.enabled) return;
+    function loadAudio(src) {
+      const audio = new Audio(src);
+      audio.preload = "auto";
+      return audio;
+    }
 
-  a.analyser.getFloatTimeDomainData(a.timeData);
+    function playAudio(a) {
+      if (!a) return;
+      try {
+        a.currentTime = 0;
+        a.play().catch(() => {});
+      } catch (_) {}
+    }
 
-  let rms = 0;
-  for (let i = 0; i < 1024; i++) {
-    rms += a.timeData[i] * a.timeData[i];
-  }
-  rms = Math.sqrt(rms / 1024);
+    function resetRun() {
+      game.birdY = HEIGHT / 2;
+      game.birdFallSpeed = FALL_SPEED;
+      game.pipeX = WIDTH + 120;
+      game.pipeY = randInt(120, HEIGHT - game.gap - 120);
+      game.score = 0;
+      game.displayScore = 0;
+      game.pipeScored = false;
+      game.lastDetectedOkTimer = 0;
+      game.lockedIdx = null;
+      game.gameOverTimer = 0;
+    }
 
-  a.currentRms = rms;
-}
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
 
-/* ================= GAME ================= */
-function resetRun() {
-  game.birdY = HEIGHT / 2;
-  game.birdFallSpeed = FALL_SPEED;
-  game.pipeX = WIDTH + 120;
-  game.started = false;
+    function centsDiff(freq, ref) {
+      if (freq <= 0 || ref <= 0) return 0;
+      return 1200 * Math.log2(freq / ref);
+    }
 
-  game.countdown = 3;
-  game.countdownTimer = 60;
-}
+    function closestNote(freq) {
+      if (freq <= 0) return [null, 0];
+      let bestI = null;
+      let bestAbs = Infinity;
+      let bestC = 0;
 
-function updateGame() {
-  updateAudio();
+      for (let i = 0; i < SCALE_NOTES.length; i++) {
+        const c = centsDiff(freq, SCALE_NOTES[i][2]);
+        const a = Math.abs(c);
+        if (a < bestAbs) {
+          bestAbs = a;
+          bestI = i;
+          bestC = c;
+        }
+      }
+      return [bestI, bestC];
+    }
 
-  if (game.state === STATE_PLAYING) {
+    function bestNoteWithOctaveFix(freq, toleranceCents) {
+      if (freq <= 0) return [null, 0, 0];
 
-    // COUNTDOWN
-    if (game.countdown >= 0) {
-      game.countdownTimer--;
-      if (game.countdownTimer <= 0) {
-        game.countdown--;
-        game.countdownTimer = 60;
+      const candidates = [
+        freq,
+        freq * 0.5,
+        freq * 0.25,
+        freq * 2.0,
+      ];
+      let bestIdx = null;
+      let bestAbs = Infinity;
+      let bestCents = 0;
+      let bestFreq = 0;
+
+      for (const f of candidates) {
+        const [idx, cents] = closestNote(f);
+        if (idx === null) continue;
+        const a = Math.abs(cents);
+        if (a < bestAbs) {
+          bestIdx = idx;
+          bestAbs = a;
+          bestCents = cents;
+          bestFreq = f;
+        }
       }
 
-      game.birdY = HEIGHT / 2;
-      draw();
+      if (bestIdx === null) return [null, 0, 0];
+      if (bestAbs <= toleranceCents) return [bestIdx, bestCents, bestFreq];
+      return [null, bestCents, bestFreq];
+    }
+
+    function detectPitchAutoCorrelation(buf, sampleRate) {
+      const n = buf.length;
+      if (!n) return 0;
+
+      let mean = 0;
+      for (let i = 0; i < n; i++) mean += buf[i];
+      mean /= n;
+
+      const x = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1));
+        x[i] = (buf[i] - mean) * w;
+      }
+
+      const minLag = Math.floor(sampleRate / MAX_FREQ);
+      const maxLag = Math.min(Math.floor(sampleRate / MIN_FREQ), n - 1);
+      if (maxLag <= minLag) return 0;
+
+      let bestLag = -1;
+      let bestVal = -Infinity;
+      const corr = new Float32Array(maxLag + 1);
+
+      for (let lag = minLag; lag <= maxLag; lag++) {
+        let sum = 0;
+        for (let i = 0; i < n - lag; i++) sum += x[i] * x[i + lag];
+        corr[lag] = sum;
+        if (sum > bestVal) {
+          bestVal = sum;
+          bestLag = lag;
+        }
+      }
+
+      if (bestLag <= 0) return 0;
+
+      let peak = bestLag;
+      if (bestLag > minLag && bestLag < maxLag) {
+        const y0 = corr[bestLag - 1];
+        const y1 = corr[bestLag];
+        const y2 = corr[bestLag + 1];
+        const denom = y0 - 2 * y1 + y2;
+        if (denom !== 0) peak = bestLag + 0.5 * (y0 - y2) / denom;
+      }
+
+      if (peak <= 0) return 0;
+      return sampleRate / peak;
+    }
+
+    async function enableMic() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        });
+
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = WINDOW_SIZE * 2;
+        source.connect(analyser);
+
+        game.audio.audioContext = audioContext;
+        game.audio.source = source;
+        game.audio.analyser = analyser;
+        game.audio.timeData = new Float32Array(analyser.fftSize);
+        game.audio.enabled = true;
+
+        statusText.textContent = "Microphone enabled";
+      } catch (err) {
+        console.error(err);
+        statusText.textContent = "Microphone permission failed";
+      }
+    }
+
+    function updateAudio() {
+      const a = game.audio;
+      if (!a.enabled || !a.analyser) return;
+
+      a.analyser.getFloatTimeDomainData(a.timeData);
+
+      let rms = 0;
+      for (let i = 0; i < WINDOW_SIZE; i++) {
+        rms += a.timeData[i] * a.timeData[i];
+      }
+      rms = Math.sqrt(rms / WINDOW_SIZE);
+      a.currentRms = rms;
+
+      let pitch = 0;
+
+      if (rms >= RMS_GATE) {
+        const slice = a.timeData.slice(0, WINDOW_SIZE);
+        pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate);
+      }
+      
+      // ✅ filter noise
+      if (rms < 0.001) pitch = 0;
+      if (pitch < 80) pitch = 0;
+      if (pitch > 600) pitch = 0;
+      
+      if (pitch > 0) {
+        a.history.push(pitch);
+        if (a.history.length > 5) a.history.shift();
+      
+        const sorted = [...a.history].sort((m, n) => m - n);
+        a.currentPitch = sorted[Math.floor(sorted.length / 2)];
+      } else {
+        // ✅ single source of truth
+        a.history = [];
+        a.currentPitch = 0;
+      }
+
+      let detected = null;
+      let cents = 0;
+      if (a.currentPitch > 0) {
+      const [idx, centsVal, correctedFreq] = bestNoteWithOctaveFix(
+        a.currentPitch,
+        DIFFICULTY_SETTINGS[game.difficulty].tolerance
+      );
+    
+      detected = idx;
+      cents = centsVal;
+    
+      // ✅ IMPORTANT: use corrected frequency
+      if (correctedFreq > 0) {
+        a.currentPitch = correctedFreq;
+      }
+    }
+
+      a.currentNoteIndex = detected;
+      a.currentCents = cents;
+
+      statusText.textContent = a.enabled
+        ? `Mic on | RMS ${rms.toFixed(4)} | Pitch ${a.currentPitch ? a.currentPitch.toFixed(1) : "--"} Hz`
+        : "Mic not enabled";
+    }
+
+    function drawTextGame(text, x, y, opts = {}) {
+      const {
+        size = 28,
+        color = "#f5faff",
+        outline = "#141928",
+        shadow = "rgba(0,0,0,0.65)",
+        align = "left",
+        center = false,
+        alpha = 1,
+        weight = "700",
+      } = opts;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `${weight} ${size}px GameUI, Arial, sans-serif`;
+      ctx.textAlign = center ? "center" : align;
+      ctx.textBaseline = "middle";
+
+      ctx.fillStyle = shadow;
+      ctx.fillText(text, x + 2, y + 2);
+
+      ctx.fillStyle = outline;
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        ctx.fillText(text, x + dx, y + dy);
+      }
+
+      ctx.fillStyle = color;
+      ctx.fillText(text, x, y);
+      ctx.restore();
+    }
+
+    function drawBackground() {
+      if (assets.background.loaded) {
+        ctx.drawImage(assets.background, 0, 0, WIDTH, HEIGHT);
+      } else {
+        const sky = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+        sky.addColorStop(0, "#79cbff");
+        sky.addColorStop(0.7, "#dff5ff");
+        sky.addColorStop(1, "#eefaff");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      }
+    }
+
+    function drawBird(x, y) {
+      if (assets.bird.loaded) {
+        const scale = 1.35;
+        const w = (assets.bird.width || 56) * scale;
+        const h = (assets.bird.height || 56) * scale;
+        ctx.drawImage(assets.bird, x - w / 2, y - h / 2, w, h);
+        return;
+      }
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1.2, 1.2);
+      ctx.fillStyle = "#ffd54f";
+      ctx.beginPath();
+      ctx.arc(0, 0, 18, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#ffb300";
+      ctx.beginPath();
+      ctx.ellipse(-4, 3, 10, 8, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(6, -4, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#111";
+      ctx.beginPath();
+      ctx.arc(7, -4, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#ff7a00";
+      ctx.beginPath();
+      ctx.moveTo(15, 0);
+      ctx.lineTo(28, 4);
+      ctx.lineTo(15, 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function getPipeSize() {
+      if (assets.pipe.loaded) {
+        return { w: assets.pipe.width * 1.28, h: assets.pipe.height };
+      }
+      return { w: 92, h: 360 };
+    }
+
+    function drawPipe(x, gapStart, gap) {
+      if (assets.pipe.loaded) {
+        const scaleX = 1.28;
+        const pipeW = assets.pipe.width * scaleX;
+    
+        // ✅ TOP PIPE (fills from ceiling to gap)
+        ctx.save();
+        ctx.translate(x, gapStart);
+        ctx.scale(1, -1);
+    
+        ctx.drawImage(
+          assets.pipe,
+          0, 0,
+          assets.pipe.width,
+          assets.pipe.height,
+          0, 0,
+          pipeW,
+          gapStart   // 🔥 THIS is the key
+        );
+    
+        ctx.restore();
+    
+        // ✅ BOTTOM PIPE (fills from gap to ground)
+        ctx.drawImage(
+          assets.pipe,
+          0, 0,
+          assets.pipe.width,
+          assets.pipe.height,
+          x,
+          gapStart + gap,
+          pipeW,
+          HEIGHT - (gapStart + gap) // 🔥 THIS is also key
+        );
+    
+        return;
+      }
+
+      // fallback
+      const pipeW = 92;
+    
+      ctx.fillStyle = "#51b95d";
+      ctx.fillRect(x, 0, pipeW, gapStart);
+      ctx.fillRect(x, gapStart + gap, pipeW, HEIGHT - (gapStart + gap));
+    }
+
+    function drawMusicStaffLines() {
+      const panelW = 200;
+      const panelX = WIDTH - panelW - 16;
+      const lineEndX = panelX - 10;
+      const margin = 120;
+      const steps = SCALE_NOTES.length - 1;
+      const stepH = (HEIGHT - 2 * margin) / steps;
+      const ys = SCALE_NOTES.map((_, i) => Math.round(HEIGHT - margin - i * stepH));
+
+      ctx.strokeStyle = "rgba(255,255,255,0.28)";
+      ctx.lineWidth = 2;
+
+      const draw5 = (centerIndex) => {
+        for (const j of [centerIndex - 2, centerIndex - 1, centerIndex, centerIndex + 1, centerIndex + 2]) {
+          if (j >= 0 && j < ys.length) {
+            ctx.beginPath();
+            ctx.moveTo(0, ys[j]);
+            ctx.lineTo(lineEndX, ys[j]);
+            ctx.stroke();
+          }
+        }
+      };
+
+      draw5(2);
+      draw5(5);
+    }
+
+    function roundRect(x, y, w, h, r, fill, stroke) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+
+    function hexToRgba(hex, alpha) {
+      const v = hex.replace("#", "");
+      const bigint = parseInt(v, 16);
+      const r = (bigint >> 16) & 255;
+      const g = (bigint >> 8) & 255;
+      const b = bigint & 255;
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function drawBadge(text, cx, cy, bg, active) {
+      const padX = 14;
+      const padY = 8;
+
+      ctx.save();
+      ctx.font = "700 18px GameUI, Arial, sans-serif";
+      const textW = ctx.measureText(text).width;
+      ctx.restore();
+
+      const w = textW + padX * 2;
+      const h = 34 + padY;
+      const scale = active ? 1.18 : 1;
+      const w2 = w * scale;
+      const h2 = h * scale;
+      const bob = active ? Math.sin(game.uiTimer * 0.2) * 4 : 0;
+      const cy2 = cy + bob;
+
+      if (active) {
+        ctx.fillStyle = hexToRgba(bg, 0.45);
+        roundRect(cx - (w2 + 20) / 2, cy2 - (h2 + 20) / 2, w2 + 20, h2 + 20, 22, true, false);
+      }
+
+      ctx.fillStyle = hexToRgba(bg, 0.85);
+      roundRect(cx - w2 / 2, cy2 - h2 / 2, w2, h2, 18, true, false);
+      ctx.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx.lineWidth = 2;
+      roundRect(cx - w2 / 2, cy2 - h2 / 2, w2, h2, 18, false, true);
+
+      drawTextGame(text, cx, cy2 + 1, {
+        size: 18,
+        color: "#1e1e28",
+        outline: "#ffffff",
+        shadow: "rgba(255,255,255,0)",
+        center: true,
+      });
+    }
+
+    function drawNotesPanel(activeIdx) {
+      const margin = 120;
+      const steps = SCALE_NOTES.length - 1;
+      const stepH = (HEIGHT - 2 * margin) / steps;
+      const panelW = 200;
+      const panelX = WIDTH - panelW - 16;
+      const panelY = margin - 25;
+      const panelH = (HEIGHT - 2 * margin) + 50;
+
+      ctx.fillStyle = "rgba(255,255,255,0.38)";
+      roundRect(panelX, panelY, panelW, panelH, 18, true, false);
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.lineWidth = 2;
+      roundRect(panelX, panelY, panelW, panelH, 18, false, true);
+
+      const badgeX = panelX + panelW / 2;
+      SCALE_NOTES.forEach(([name, sol], i) => {
+        const y = Math.round(HEIGHT - margin - i * stepH);
+        drawBadge(`${name} ${sol}`, badgeX, y, NOTE_COLORS[name], activeIdx === i);
+      });
+    }
+
+    function drawPitchMeter(birdX, birdY, cents, tolerance) {
+      const barW = 140;
+      const barH = 12;
+      const x = birdX - barW / 2;
+      const y = birdY + 42;
+
+      ctx.fillStyle = "#191923";
+      roundRect(x, y, barW, barH, 6, true, false);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      roundRect(x, y, barW, barH, 6, false, true);
+
+      ctx.beginPath();
+      ctx.moveTo(x + barW / 2, y + 2);
+      ctx.lineTo(x + barW / 2, y + barH - 2);
+      ctx.stroke();
+
+      if (tolerance <= 0) return;
+
+      const centsClamped = Math.max(-tolerance, Math.min(tolerance, cents));
+      const dotX = x + barW / 2 + (centsClamped / tolerance) * (barW / 2);
+
+      let color = "#dc5050";
+      if (Math.abs(cents) < 10) color = "#50dc78";
+      else if (Math.abs(cents) < 25) color = "#f0dc50";
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(dotX, y + barH / 2, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawHud(score, pitchHz, noteName, difficultyName) {
+      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.fillRect(0, 0, WIDTH, 90);
+
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 90);
+      ctx.lineTo(WIDTH, 90);
+      ctx.stroke();
+
+      drawTextGame(`SCORE ${score}`, 20, 18, { size: 28 });
+      drawTextGame(`PITCH ${pitchHz > 0 ? pitchHz.toFixed(1) : "--.-"} Hz`, 20, 48, { size: 24 });
+      drawTextGame(`NOTE ${noteName || "--"}`, 20, 76, { size: 22 });
+
+      ctx.fillStyle = "rgba(0,0,0,0.38)";
+      roundRect(WIDTH - 220, 10, 200, 34, 10, true, false);
+      drawTextGame(`MODE ${difficultyName.toUpperCase()}`, WIDTH - 210, 28, { size: 18 });
+    }
+
+    function drawRmsBar(x, y, w, h, rms) {
+      const level = Math.max(0, Math.min(1, rms / 0.05));
+      ctx.fillStyle = "#252523";
+      roundRect(x, y, w, h, 10, true, false);
+
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      roundRect(x, y, w, h, 10, false, true);
+
+      const fillW = (w - 6) * level;
+      let color = "#dc5050";
+      if (level > 0.25) color = "#50dc78";
+      else if (level > 0.1) color = "#f0dc50";
+
+      ctx.fillStyle = color;
+      roundRect(x + 3, y + 3, fillW, h - 6, 8, true, false);
+    }
+
+    function rectsCollide(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function updateGame() {
+      updateAudio();
+      console.log(
+        "pipe loaded:",
+        assets.pipe.loaded,
+        "size:",
+        assets.pipe.width,
+        assets.pipe.height
+      );
+      game.uiTimer += 1;
+
+      const pitchHz = game.audio.currentPitch;
+      const detectedIdx = game.audio.currentNoteIndex;
+      const cents = game.audio.currentCents;
+      const rms = game.audio.currentRms;
+
+      if (game.state === STATE_PLAYING) {
+       if (detectedIdx !== null) {
+        game.lockedIdx = detectedIdx;
+        game.lastDetectedOkTimer = DETECTED_OK_GRACE;
+      } else {
+        game.lastDetectedOkTimer = Math.max(0, game.lastDetectedOkTimer - 1);
+      }
+        
+       let idx = null;
+
+        if (detectedIdx !== null) {
+          idx = detectedIdx;
+        } else if (game.lastDetectedOkTimer > 0 && game.lockedIdx !== null) {
+          idx = game.lockedIdx; // short grace period
+        } else {
+          idx = null; // 🚨 fall
+        }
+
+        if (idx !== null) {
+          const margin = 120;
+          const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
+          game.birdY += (target - game.birdY) * 0.12;
+          game.birdFallSpeed = FALL_SPEED;
+        } else {
+          game.birdY += game.birdFallSpeed;
+        
+          game.birdFallSpeed = Math.min(
+            MAX_FALL_SPEED,
+            game.birdFallSpeed + FALL_ACCEL
+          );
+        
+          // 🔥 ADD THIS
+          game.lockedIdx = null;
+        }
+
+        if (game.birdY < CEILING_Y || game.birdY > GROUND_Y) {
+          game.state = STATE_GAME_OVER;
+          game.gameOverTimer = 0;
+          playAudio(assets.dieAudio);
+        }
+
+        game.pipeX -= DIFFICULTY_SETTINGS[game.difficulty].speed;
+        let spawnedNewPipe = false;
+        const pipeSize = getPipeSize();
+
+        if (game.pipeX < -pipeSize.w) {
+          game.pipeX = WIDTH + 120;
+          game.pipeY = randInt(120, HEIGHT - game.gap - 120);
+          game.pipeScored = false;
+          spawnedNewPipe = true;
+        }
+
+        if (RESET_LOCK_EACH_PIPE && spawnedNewPipe) game.lockedIdx = null;
+
+        const birdW = assets.bird.loaded ? assets.bird.width * 1.35 : 44;
+        const birdH = assets.bird.loaded ? assets.bird.height * 1.35 : 44;
+        const birdRect = {
+          x: 150 - birdW / 2,
+          y: game.birdY - birdH / 2,
+          w: birdW,
+          h: birdH,
+        };
+
+        const topRect = { x: game.pipeX, y: 0, w: pipeSize.w, h: game.pipeY };
+        const botRect = {
+          x: game.pipeX,
+          y: game.pipeY + game.gap,
+          w: pipeSize.w,
+          h: HEIGHT - (game.pipeY + game.gap),
+        };
+
+        if (rectsCollide(birdRect, topRect) || rectsCollide(birdRect, botRect)) {
+          game.state = STATE_GAME_OVER;
+          game.gameOverTimer = 0;
+          playAudio(assets.dieAudio);
+        }
+
+        const pipeCenterX = game.pipeX + pipeSize.w / 2;
+        if (!game.pipeScored && 150 > pipeCenterX) {
+          const ok = game.lastDetectedOkTimer > 0 || (PITCH_LOCK_ENABLED && game.lockedIdx !== null);
+          if (ok) {
+            game.score += 1;
+            game.pipeScored = true;
+          }
+        }
+
+        game.displayScore += (game.score - game.displayScore) * 0.12;
+      } else if (game.state === STATE_GAME_OVER) {
+        game.gameOverTimer += 1;
+      }
+
+      drawBackground();
+
+      if (game.state === STATE_CALIBRATE) {
+        drawTextGame("MIC CALIBRATION", WIDTH / 2, 110, { size: 52, center: true });
+        drawTextGame("SPEAK / SING NOW", WIDTH / 2, 180, { size: 28, center: true });
+        drawTextGame("Enable the microphone, then press Start Game", WIDTH / 2, 250, { size: 24, center: true });
+        drawRmsBar(WIDTH / 2 - 220, 310, 440, 24, rms);
+        drawTextGame(`INPUT RMS ${rms.toFixed(4)}`, WIDTH / 2, 360, { size: 26, center: true });
+        drawTextGame(
+          game.audio.enabled ? "MIC OK! PRESS START GAME" : "MIC NOT READY",
+          WIDTH / 2,
+          500,
+          {
+            size: 26,
+            center: true,
+            color: game.audio.enabled ? "#78ffb4" : "#ffe678",
+          }
+        );
+      } else if (game.state === STATE_MENU) {
+        const titleY = 120 + Math.sin(game.uiTimer * 0.05) * 10;
+        drawTextGame("SOLFEGE BIRD", WIDTH / 2, titleY, { size: 58, center: true });
+        drawBird(WIDTH / 2, HEIGHT / 2 + Math.sin(game.uiTimer * 0.08) * 12);
+
+        const pulse = (Math.sin(game.uiTimer * 0.1) + 1) / 2;
+        drawTextGame("PRESS START GAME", WIDTH / 2, HEIGHT - 150, {
+          size: 28,
+          center: true,
+          alpha: 0.5 + pulse * 0.5,
+        });
+        drawTextGame(`DIFFICULTY ${game.difficulty.toUpperCase()}`, WIDTH / 2, HEIGHT - 90, {
+          size: 24,
+          center: true,
+          color: "#ffe68c",
+        });
+      } else if (game.state === STATE_PLAYING) {
+        const idx = PITCH_LOCK_ENABLED && game.lockedIdx !== null ? game.lockedIdx : detectedIdx;
+        drawMusicStaffLines();
+        drawPipe(game.pipeX, game.pipeY, game.gap);
+        drawBird(150, game.birdY);
+
+        if (detectedIdx !== null) {
+          drawPitchMeter(150, game.birdY, cents, DIFFICULTY_SETTINGS[game.difficulty].tolerance);
+        }
+
+        drawNotesPanel(idx);
+        const shownIdx = game.lockedIdx !== null ? game.lockedIdx : detectedIdx;
+        const noteName = shownIdx !== null ? SCALE_NOTES[shownIdx][0] : null;
+        drawHud(Math.round(game.displayScore), pitchHz, noteName, game.difficulty);
+      } else if (game.state === STATE_GAME_OVER) {
+        drawMusicStaffLines();
+        drawPipe(game.pipeX, game.pipeY, game.gap);
+        drawBird(150, game.birdY);
+
+        ctx.fillStyle = `rgba(0,0,0,${Math.min(0.7, game.gameOverTimer * 0.02)})`;
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        drawTextGame(
+          "GAME OVER",
+          WIDTH / 2,
+          HEIGHT / 2 - 60 + Math.sin(game.gameOverTimer * 0.15) * 8,
+          {
+            size: 58,
+            center: true,
+            color: "#ff8a8a",
+          }
+        );
+        drawTextGame("PRESS START GAME TO PLAY AGAIN", WIDTH / 2, HEIGHT / 2 + 20, {
+          size: 24,
+          center: true,
+        });
+        drawTextGame(`FINAL ${game.score}`, WIDTH / 2, HEIGHT / 2 + 70, {
+          size: 28,
+          center: true,
+        });
+      }
+
       requestAnimationFrame(updateGame);
-      return;
     }
 
-    game.started = true;
+    micBtn.addEventListener("click", async () => {
+      await enableMic();
+      if (game.audio.enabled && game.state === STATE_CALIBRATE) game.state = STATE_MENU;
+    });
 
-    // FALL LOGIC
-    if (game.audio.currentRms > 0.002) {
-      game.birdY -= 2;
-    } else {
-      game.birdY += game.birdFallSpeed;
-      game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
-    }
+    startBtn.addEventListener("click", () => {
+      game.difficulty = difficultySelect.value;
+      if (!game.audio.enabled) {
+        statusText.textContent = "Enable microphone first";
+        return;
+      }
+      resetRun();
+      game.state = STATE_PLAYING;
+      playAudio(assets.uiAudio);
+    });
 
-    // PIPE
-    game.pipeX -= 4;
-    if (game.pipeX < -100) {
-      game.pipeX = WIDTH + 120;
-      game.pipeY = Math.random() * 300 + 100;
-    }
-  }
+    difficultySelect.addEventListener("change", (e) => {
+      game.difficulty = e.target.value;
+      playAudio(assets.uiAudio);
+    });
 
-  draw();
-  requestAnimationFrame(updateGame);
-}
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (game.state === STATE_MENU && game.audio.enabled) {
+          resetRun();
+          game.state = STATE_PLAYING;
+          playAudio(assets.uiAudio);
+        } else if (game.state === STATE_GAME_OVER) {
+          resetRun();
+          game.state = STATE_PLAYING;
+          playAudio(assets.uiAudio);
+        }
+      }
+    });
 
-/* ================= DRAW ================= */
-function draw() {
-  ctx.clearRect(0,0,WIDTH,HEIGHT);
-
-  ctx.fillStyle = "#87ceeb";
-  ctx.fillRect(0,0,WIDTH,HEIGHT);
-
-  // PIPE
-  ctx.fillStyle = "green";
-  ctx.fillRect(game.pipeX, 0, 80, game.pipeY);
-  ctx.fillRect(game.pipeX, game.pipeY + game.gap, 80, HEIGHT);
-
-  // BIRD
-  ctx.fillStyle = "yellow";
-  ctx.beginPath();
-  ctx.arc(150, game.birdY, 15, 0, Math.PI*2);
-  ctx.fill();
-
-  // MENU
-  if (game.state === STATE_MENU) {
-    drawText("SOLFEGE BIRD", WIDTH/2, 120);
-    drawText("Enable Mic → Start", WIDTH/2, 200);
-  }
-
-  // COUNTDOWN
-  if (game.state === STATE_PLAYING && game.countdown >= 0) {
-    let text = game.countdown > 0 ? game.countdown : "SING!";
-    drawText(text, WIDTH/2, HEIGHT/2, 60);
-  }
-}
-
-function drawText(text, x, y, size=40){
-  ctx.fillStyle = "white";
-  ctx.font = size + "px GameUI";
-  ctx.textAlign = "center";
-  ctx.fillText(text, x, y);
-}
-
-/* ================= EVENTS ================= */
-micBtn.onclick = enableMic;
-
-startBtn.onclick = () => {
-  if (!game.audio.enabled) {
-    statusText.textContent = "Enable mic first";
-    return;
-  }
-  resetRun();
-  game.state = STATE_PLAYING;
-};
-
-updateGame();
-</script>
+    updateGame();
+  </script>
 </body>
 </html>
