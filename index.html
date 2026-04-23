@@ -116,14 +116,14 @@
     const FALL_ACCEL = 0.02;
     const MAX_FALL_SPEED = 2.0;
 
-    const RMS_GATE = 0.003;
+    const RMS_GATE = 0.0005;
     const PITCH_LOCK_ENABLED = true;
     const RESET_LOCK_EACH_PIPE = true;
-    const DETECTED_OK_GRACE = 18;
+    const DETECTED_OK_GRACE = 8;
 
     const SAMPLE_RATE = 44100;
-    const MIN_FREQ = 180;
-    const MAX_FREQ = 900;
+    const MIN_FREQ = 70;
+    const MAX_FREQ = 1000;
     const WINDOW_SIZE = 2048;
 
     const STATE_CALIBRATE = "calibrate";
@@ -160,10 +160,10 @@
     };
 
     const assets = {
-      background: loadImage("assets/background/background.jpg"),
-      bird: loadImage("assets/bird/bird.png"),
-      pipe: loadImage("assets/pipes/pipe.png"),
-      dieAudio: loadAudio("assets/sounds/die.wav"),
+      background: loadImage("./assets/background/background.jpg"),
+      bird: loadImage("./assets/bird/bird.png"),
+      pipe: loadImage("./assets/pipes/pipe.png"),
+      dieAudio: loadAudio("./assets/sounds/die.wav"),
       uiAudio: null,
     };
 
@@ -262,7 +262,12 @@
     function bestNoteWithOctaveFix(freq, toleranceCents) {
       if (freq <= 0) return [null, 0, 0];
 
-      const candidates = [freq, freq * 0.5, freq * 2.0];
+      const candidates = [
+        freq,
+        freq * 0.5,
+        freq * 0.25,
+        freq * 2.0,
+      ];
       let bestIdx = null;
       let bestAbs = Infinity;
       let bestCents = 0;
@@ -336,10 +341,10 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         });
 
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -375,31 +380,45 @@
       a.currentRms = rms;
 
       let pitch = 0;
+
       if (rms >= RMS_GATE) {
         const slice = a.timeData.slice(0, WINDOW_SIZE);
-        pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate || SAMPLE_RATE);
+        pitch = detectPitchAutoCorrelation(slice, a.audioContext.sampleRate);
       }
-
+      
+      // ✅ filter noise
+      if (rms < 0.001) pitch = 0;
+      if (pitch < 80) pitch = 0;
+      if (pitch > 600) pitch = 0;
+      
       if (pitch > 0) {
         a.history.push(pitch);
         if (a.history.length > 5) a.history.shift();
+      
         const sorted = [...a.history].sort((m, n) => m - n);
         a.currentPitch = sorted[Math.floor(sorted.length / 2)];
       } else {
-        a.currentPitch = 0;
+        // ✅ single source of truth
         a.history = [];
+        a.currentPitch = 0;
       }
 
       let detected = null;
       let cents = 0;
       if (a.currentPitch > 0) {
-        const [idx, centsVal] = bestNoteWithOctaveFix(
-          a.currentPitch,
-          DIFFICULTY_SETTINGS[game.difficulty].tolerance
-        );
-        detected = idx;
-        cents = centsVal;
+      const [idx, centsVal, correctedFreq] = bestNoteWithOctaveFix(
+        a.currentPitch,
+        DIFFICULTY_SETTINGS[game.difficulty].tolerance
+      );
+    
+      detected = idx;
+      cents = centsVal;
+    
+      // ✅ IMPORTANT: use corrected frequency
+      if (correctedFreq > 0) {
+        a.currentPitch = correctedFreq;
       }
+    }
 
       a.currentNoteIndex = detected;
       a.currentCents = cents;
@@ -502,51 +521,50 @@
       return { w: 92, h: 360 };
     }
 
-    function drawPipe(x, y, gap) {
-  if (assets.pipe.loaded) {
-    const scaleX = 1.28;
-    const pipeW = assets.pipe.width * scaleX;
-    const pipeH = assets.pipe.height;
+    function drawPipe(x, gapStart, gap) {
+      if (assets.pipe.loaded) {
+        const scaleX = 1.28;
+        const pipeW = assets.pipe.width * scaleX;
+    
+        // ✅ TOP PIPE (fills from ceiling to gap)
+        ctx.save();
+        ctx.translate(x, gapStart);
+        ctx.scale(1, -1);
+    
+        ctx.drawImage(
+          assets.pipe,
+          0, 0,
+          assets.pipe.width,
+          assets.pipe.height,
+          0, 0,
+          pipeW,
+          gapStart   // 🔥 THIS is the key
+        );
+    
+        ctx.restore();
+    
+        // ✅ BOTTOM PIPE (fills from gap to ground)
+        ctx.drawImage(
+          assets.pipe,
+          0, 0,
+          assets.pipe.width,
+          assets.pipe.height,
+          x,
+          gapStart + gap,
+          pipeW,
+          HEIGHT - (gapStart + gap) // 🔥 THIS is also key
+        );
+    
+        return;
+      }
 
-    // -------- TOP PIPE (FULL HEIGHT) --------
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(1, -1);
-
-    ctx.drawImage(
-      assets.pipe,
-      0, 0,
-      assets.pipe.width, pipeH,
-      0, -pipeH,
-      pipeW, pipeH
-    );
-
-    ctx.restore();
-
-    // -------- BOTTOM PIPE --------
-    ctx.drawImage(
-      assets.pipe,
-      0, 0,
-      assets.pipe.width, pipeH,
-      x, y + gap,
-      pipeW, pipeH
-    );
-
-    return;
-  }
-
-  // fallback (unchanged)
-  const pipeW = 92;
-  const capH = 18;
-
-  ctx.fillStyle = "#51b95d";
-  ctx.fillRect(x, 0, pipeW, y);
-  ctx.fillRect(x, y + gap, pipeW, HEIGHT - (y + gap));
-
-  ctx.fillStyle = "#3a9848";
-  ctx.fillRect(x - 6, y - capH, pipeW + 12, capH);
-  ctx.fillRect(x - 6, y + gap, pipeW + 12, capH);
-}
+      // fallback
+      const pipeW = 92;
+    
+      ctx.fillStyle = "#51b95d";
+      ctx.fillRect(x, 0, pipeW, gapStart);
+      ctx.fillRect(x, gapStart + gap, pipeW, HEIGHT - (gapStart + gap));
+    }
 
     function drawMusicStaffLines() {
       const panelW = 200;
@@ -731,6 +749,13 @@
 
     function updateGame() {
       updateAudio();
+      console.log(
+        "pipe loaded:",
+        assets.pipe.loaded,
+        "size:",
+        assets.pipe.width,
+        assets.pipe.height
+      );
       game.uiTimer += 1;
 
       const pitchHz = game.audio.currentPitch;
@@ -739,9 +764,22 @@
       const rms = game.audio.currentRms;
 
       if (game.state === STATE_PLAYING) {
-        if (detectedIdx !== null) game.lockedIdx = detectedIdx;
+       if (detectedIdx !== null) {
+        game.lockedIdx = detectedIdx;
+        game.lastDetectedOkTimer = DETECTED_OK_GRACE;
+      } else {
+        game.lastDetectedOkTimer = Math.max(0, game.lastDetectedOkTimer - 1);
+      }
+        
+       let idx = null;
 
-        const idx = PITCH_LOCK_ENABLED && game.lockedIdx !== null ? game.lockedIdx : detectedIdx;
+        if (detectedIdx !== null) {
+          idx = detectedIdx;
+        } else if (game.lastDetectedOkTimer > 0 && game.lockedIdx !== null) {
+          idx = game.lockedIdx; // short grace period
+        } else {
+          idx = null; // 🚨 fall
+        }
 
         if (idx !== null) {
           const margin = 120;
@@ -750,7 +788,14 @@
           game.birdFallSpeed = FALL_SPEED;
         } else {
           game.birdY += game.birdFallSpeed;
-          game.birdFallSpeed = Math.min(MAX_FALL_SPEED, game.birdFallSpeed + FALL_ACCEL);
+        
+          game.birdFallSpeed = Math.min(
+            MAX_FALL_SPEED,
+            game.birdFallSpeed + FALL_ACCEL
+          );
+        
+          // 🔥 ADD THIS
+          game.lockedIdx = null;
         }
 
         if (game.birdY < CEILING_Y || game.birdY > GROUND_Y) {
@@ -794,9 +839,6 @@
           game.gameOverTimer = 0;
           playAudio(assets.dieAudio);
         }
-
-        if (detectedIdx !== null) game.lastDetectedOkTimer = DETECTED_OK_GRACE;
-        else game.lastDetectedOkTimer = Math.max(0, game.lastDetectedOkTimer - 1);
 
         const pipeCenterX = game.pipeX + pipeSize.w / 2;
         if (!game.pipeScored && 150 > pipeCenterX) {
