@@ -113,8 +113,8 @@
     const GROUND_Y = HEIGHT - 60;
 
     const FALL_SPEED = 1.0;
-    const FALL_ACCEL = 0.02;
-    const MAX_FALL_SPEED = 2.8;
+    const FALL_ACCEL = 0.01;
+    const MAX_FALL_SPEED = 1.6;
 
     const RMS_GATE = 0.002;
     const PITCH_LOCK_ENABLED = true;
@@ -143,14 +143,14 @@
     ];
     
     const NOTE_LANES = [
-	  140,
-	  180,
-	  220,
-	  260,
-	  300,
-	  340,
-	  380,
-	  420,
+	420, // C4
+	  380, // D4
+	  340, // E4
+	  300, // F4
+	  260, // G4
+	  220, // A4
+	  180, // B4
+	  140, // C5
 	];
 
     const NOTE_COLORS = {
@@ -274,18 +274,15 @@
 
 function getRandomGap(lane) {
 
-  // much tighter musical gameplay
-
   if (game.difficulty === "easy") {
-    return randInt(90, 120);
+    return randInt(70, 90);
   }
 
   if (game.difficulty === "medium") {
-    return randInt(70, 95);
+    return randInt(55, 75);
   }
 
-  // hard
-  return randInt(55, 80);
+  return randInt(45, 60);
 }
 	  
 function getNextLane() {
@@ -621,7 +618,7 @@ function generateNextPipe() {
 
     function drawBird(x, y) {
       if (assets.bird.loaded) {
-        const scale = 2.0;
+        const scale = 1.7;
         const w = (assets.bird.width || 56) * scale;
         const h = (assets.bird.height || 56) * scale;
         ctx.drawImage(assets.bird, x - w / 2, y - h / 2, w, h);
@@ -976,9 +973,10 @@ function generateNextPipe() {
       
         // allow real control immediately
         if (idx !== null) {
-          const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
-          game.birdY += (target - game.birdY) * 0.18;
-        } else {
+		  const targetY = NOTE_LANES[idx];
+		  game.birdY += (targetY - game.birdY) * 0.18;
+		}
+		else {
           // slight float if no voice
           game.birdY += Math.sin(game.uiTimer * 0.08) * 0.3;
         }
@@ -986,20 +984,34 @@ function generateNextPipe() {
         game.birdFallSpeed = 0;
       }
         
-        // NORMAL gameplay
-        else if (idx !== null) {
-          const target = HEIGHT - margin - idx * ((HEIGHT - 2 * margin) / (SCALE_NOTES.length - 1));
-          game.birdY += (target - game.birdY) * 0.12;
-          game.birdFallSpeed = FALL_SPEED;
-        }
-        
         // FALL
-        else {
-        // softer fall (feels less punishing)
-        game.birdFallSpeed += FALL_ACCEL * 0.5;
-        game.birdFallSpeed = Math.min(MAX_FALL_SPEED * 0.7, game.birdFallSpeed);
-        game.birdY += game.birdFallSpeed;
-      }
+        // NORMAL GAMEPLAY MOVEMENT
+		else {
+		
+		  if (game.audio.currentNoteIndex !== null) {
+		
+		    // move toward musical lane
+		    const targetY =
+		      NOTE_LANES[game.audio.currentNoteIndex];
+		
+		    game.birdY += (targetY - game.birdY) * 0.32;
+		
+		    // soften gravity while singing
+		    game.birdFallSpeed *= 0.7;
+		
+		  } else {
+		
+		    // fall when no note detected
+		    game.birdFallSpeed += FALL_ACCEL * 0.5;
+		
+		    game.birdFallSpeed = Math.min(
+		      MAX_FALL_SPEED * 0.7,
+		      game.birdFallSpeed
+		    );
+		
+		    game.birdY += game.birdFallSpeed;
+		  }
+		}
 
         if (game.birdY < CEILING_Y || game.birdY > GROUND_Y) {
           game.state = STATE_GAME_OVER;
@@ -1018,8 +1030,8 @@ function generateNextPipe() {
 
         if (RESET_LOCK_EACH_PIPE && spawnedNewPipe) game.lockedIdx = null;
 
-        const birdW = assets.bird.loaded ? assets.bird.width * 1.35 : 44;
-        const birdH = assets.bird.loaded ? assets.bird.height * 1.35 : 44;
+        const birdW = assets.bird.loaded ? assets.bird.width * 1.7 : 44;
+        const birdH = assets.bird.loaded ? assets.bird.height * 1.7 : 44;
         const birdRect = {
           x: 150 - birdW / 2,
           y: game.birdY - birdH / 2,
