@@ -338,8 +338,16 @@ function generateNextPipe() {
   game.gap = getRandomGap(lane);
 
   // random rhythm spacing
-  game.pipeSpacing = randInt(120, 320);
-
+  if (game.difficulty === "easy") {
+	  game.pipeSpacing = randInt(120, 170);
+	
+	} else if (game.difficulty === "medium") {
+	  game.pipeSpacing = randInt(90, 140);
+	
+	} else {
+	  game.pipeSpacing = randInt(70, 110);
+	}
+	
   // random speed variation
   game.pipeSpeed = randomRange(
     settings.speedMin,
@@ -613,7 +621,7 @@ function generateNextPipe() {
 
     function drawBird(x, y) {
       if (assets.bird.loaded) {
-        const scale = 1.35;
+        const scale = 2.0;
         const w = (assets.bird.width || 56) * scale;
         const h = (assets.bird.height || 56) * scale;
         ctx.drawImage(assets.bird, x - w / 2, y - h / 2, w, h);
@@ -658,45 +666,61 @@ function generateNextPipe() {
     }
 
     function drawPipe(x, gapStart, gap) {
-    const pipeW = 80;
-  
-    if (assets.pipe.loaded) {
-      const img = assets.pipe;
-  
-      //  TOP PIPE (tile upward)
-      let y = gapStart;
 
-      while (y > 0) {
-        y -= img.height;
-      
-        ctx.save();
-        ctx.translate(x + pipeW / 2, y + img.height / 2);
-        ctx.scale(1, -1); // flip vertically
-      
-        ctx.drawImage(
-          img,
-          -pipeW / 2,
-          -img.height / 2,
-          pipeW,
-          img.height
-        );
-      
-        ctx.restore();
-      }
-  
-      //  BOTTOM PIPE (tile downward)
-      y = gapStart + gap;
-      while (y < HEIGHT) {
-        ctx.drawImage(img, x, y, pipeW, img.height);
-        y += img.height;
-      }
-  
-    } else {
-      // fallback (INSIDE function )
-      ctx.fillStyle = "#51b95d";
-      ctx.fillRect(x, 0, pipeW, gapStart);
-      ctx.fillRect(x, gapStart + gap, pipeW, HEIGHT - (gapStart + gap));
-    }
+  const pipeW = 80;
+
+  const topPipeHeight = gapStart;
+  const bottomPipeY = gapStart + gap;
+  const bottomPipeHeight = HEIGHT - bottomPipeY;
+
+  if (assets.pipe.loaded) {
+
+    const img = assets.pipe;
+
+    // TOP PIPE
+    ctx.save();
+
+    ctx.translate(x + pipeW / 2, topPipeHeight / 2);
+    ctx.scale(1, -1);
+
+    ctx.drawImage(
+      img,
+      -pipeW / 2,
+      -topPipeHeight / 2,
+      pipeW,
+      topPipeHeight
+    );
+
+    ctx.restore();
+
+    // BOTTOM PIPE
+    ctx.drawImage(
+      img,
+      x,
+      bottomPipeY,
+      pipeW,
+      bottomPipeHeight
+    );
+
+  } else {
+
+    // fallback rectangles
+    ctx.fillStyle = "#51b95d";
+
+    ctx.fillRect(
+      x,
+      0,
+      pipeW,
+      topPipeHeight
+    );
+
+    ctx.fillRect(
+      x,
+      bottomPipeY,
+      pipeW,
+      bottomPipeHeight
+    );
+  }
 }
 
     function drawMusicStaffLines() {
