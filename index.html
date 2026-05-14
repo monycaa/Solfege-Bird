@@ -274,20 +274,20 @@
 
 function getRandomGap(lane) {
 
-  // higher notes harder
-  if (lane >= 6) {
-    return randInt(135, 165);
+  // much tighter musical gameplay
+
+  if (game.difficulty === "easy") {
+    return randInt(90, 120);
   }
 
-  // lower notes easier
-  if (lane <= 1) {
-    return randInt(220, 280);
+  if (game.difficulty === "medium") {
+    return randInt(70, 95);
   }
 
-  // middle normal
-  return randInt(160, 230);
+  // hard
+  return randInt(55, 80);
 }
-
+	  
 function getNextLane() {
 
   // prevent impossible jumps
@@ -339,13 +339,13 @@ function generateNextPipe() {
 
   // random rhythm spacing
   if (game.difficulty === "easy") {
-	  game.pipeSpacing = randInt(120, 170);
+	  game.pipeSpacing = randInt(90, 130);
 	
 	} else if (game.difficulty === "medium") {
-	  game.pipeSpacing = randInt(90, 140);
+	  game.pipeSpacing = randInt(70, 110);
 	
 	} else {
-	  game.pipeSpacing = randInt(70, 110);
+	  game.pipeSpacing = randInt(55, 90);
 	}
 	
   // random speed variation
