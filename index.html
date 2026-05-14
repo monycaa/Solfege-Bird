@@ -275,14 +275,14 @@
 function getRandomGap(lane) {
 
   if (game.difficulty === "easy") {
-    return randInt(70, 90);
+    return randInt(115, 135);
   }
 
   if (game.difficulty === "medium") {
-    return randInt(55, 75);
+    return randInt(95, 115);
   }
 
-  return randInt(45, 60);
+  return randInt(80, 100);
 }
 	  
 function getNextLane() {
@@ -618,7 +618,7 @@ function generateNextPipe() {
 
     function drawBird(x, y) {
       if (assets.bird.loaded) {
-        const scale = 1.7;
+        const scale = 1.5;
         const w = (assets.bird.width || 56) * scale;
         const h = (assets.bird.height || 56) * scale;
         ctx.drawImage(assets.bird, x - w / 2, y - h / 2, w, h);
@@ -1030,8 +1030,8 @@ function generateNextPipe() {
 
         if (RESET_LOCK_EACH_PIPE && spawnedNewPipe) game.lockedIdx = null;
 
-        const birdW = assets.bird.loaded ? assets.bird.width * 1.7 : 44;
-        const birdH = assets.bird.loaded ? assets.bird.height * 1.7 : 44;
+        const birdW = assets.bird.loaded ? assets.bird.width * 1.35 : 44;
+        const birdH = assets.bird.loaded ? assets.bird.height * 1.35 : 44;
         const birdRect = {
           x: 150 - birdW / 2,
           y: game.birdY - birdH / 2,
