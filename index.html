@@ -113,8 +113,8 @@
     const GROUND_Y = HEIGHT - 60;
 
     const FALL_SPEED = 1.0;
-    const FALL_ACCEL = 0.015;
-    const MAX_FALL_SPEED = 2.0;
+    const FALL_ACCEL = 0.02;
+    const MAX_FALL_SPEED = 2.8;
 
     const RMS_GATE = 0.002;
     const PITCH_LOCK_ENABLED = true;
@@ -141,6 +141,17 @@
       ["B4", "Si", 493.88],
       ["C5", "Do", 523.25],
     ];
+    
+    const NOTE_LANES = [
+      520, // C4
+      460, // D4
+      400, // E4
+      340, // F4
+      280, // G4
+      220, // A4
+      160, // B4
+      100, // C5
+    ];
 
     const NOTE_COLORS = {
       C4: "#ffbe50",
@@ -154,9 +165,23 @@
     };
 
     const DIFFICULTY_SETTINGS = {
-      easy: { speed: 3.5, tolerance: 70 },
-      medium: { speed: 5.0, tolerance: 45 },
-      hard: { speed: 6.5, tolerance: 28 },
+      easy: {
+        speedMin: 3.0,
+        speedMax: 4.2,
+        tolerance: 70,
+      },
+    
+      medium: {
+        speedMin: 4.5,
+        speedMax: 6.2,
+        tolerance: 45,
+      },
+    
+      hard: {
+        speedMin: 6.0,
+        speedMax: 8.5,
+        tolerance: 28,
+      },
     };
 
     const assets = {
@@ -176,9 +201,12 @@
       displayScore: 0,
       birdY: HEIGHT / 2,
       birdFallSpeed: FALL_SPEED,
-      pipeX: WIDTH + 120,
+      pipeX: WIDTH + 220,
       pipeY: 150,
       gap: 200,
+      pipeSpacing: 180,
+      pipeSpeed: 4,
+      lastLane: 3,
       pipeScored: false,
       lastDetectedOkTimer: 0,
       lockedIdx: null,
@@ -227,8 +255,7 @@
       game.started = false;
       game.birdY = HEIGHT / 2;
       game.birdFallSpeed = FALL_SPEED;
-      game.pipeX = WIDTH + 120;
-      game.pipeY = randInt(120, HEIGHT - game.gap - 120);
+      generateNextPipe();
       game.score = 0;
       game.displayScore = 0;
       game.pipeScored = false;
@@ -240,7 +267,94 @@
     function randInt(min, max) {
       return Math.floor(Math.random() * (max - min + 1)) + min;
     }
+    
+    function randomRange(min, max) {
+  return Math.random() * (max - min) + min;
+}
 
+function getRandomGap(lane) {
+
+  // higher notes harder
+  if (lane >= 6) {
+    return randInt(135, 165);
+  }
+
+  // lower notes easier
+  if (lane <= 1) {
+    return randInt(220, 280);
+  }
+
+  // middle normal
+  return randInt(160, 230);
+}
+
+function getNextLane() {
+
+  // prevent impossible jumps
+  const maxJump = 2;
+
+  let minLane = game.lastLane - maxJump;
+  let maxLane = game.lastLane + maxJump;
+
+  minLane = Math.max(0, minLane);
+  maxLane = Math.min(NOTE_LANES.length - 1, maxLane);
+
+  const possible = [];
+
+  for (let i = minLane; i <= maxLane; i++) {
+
+    // extra weight for extreme notes
+    if (i === 0 || i === 7) {
+      possible.push(i);
+      possible.push(i);
+    }
+
+    possible.push(i);
+  }
+
+  // reduce repeated same notes
+  if (Math.random() < 0.7) {
+
+    const filtered = possible.filter(v => v !== game.lastLane);
+
+    if (filtered.length > 0) {
+      return filtered[randInt(0, filtered.length - 1)];
+    }
+  }
+
+  return possible[randInt(0, possible.length - 1)];
+}
+
+function generateNextPipe() {
+
+  const settings = DIFFICULTY_SETTINGS[game.difficulty];
+
+  const lane = getNextLane();
+
+  game.lastLane = lane;
+
+  game.pipeY = NOTE_LANES[lane];
+
+  game.gap = getRandomGap(lane);
+
+  // random rhythm spacing
+  game.pipeSpacing = randInt(120, 320);
+
+  // random speed variation
+  game.pipeSpeed = randomRange(
+    settings.speedMin,
+    settings.speedMax
+  );
+
+  game.pipeX = WIDTH + game.pipeSpacing;
+
+  game.pipeScored = false;
+
+  if (RESET_LOCK_EACH_PIPE) {
+    game.lockedIdx = null;
+  }
+}
+    
     function centsDiff(freq, ref) {
       if (freq <= 0 || ref <= 0) return 0;
       return 1200 * Math.log2(freq / ref);
@@ -734,7 +848,8 @@
       ctx.moveTo(0, 90);
       ctx.lineTo(WIDTH, 90);
       ctx.stroke();
-
+      
+      drawTextGame(`Speed ${game.pipeSpeed.toFixed(1)}`, 24, 80, { size: 20 });
       drawTextGame(`SCORE ${score}`, 20, 18, { size: 28 });
       drawTextGame(`PITCH ${pitchHz > 0 ? pitchHz.toFixed(1) : "--.-"} Hz`, 20, 48, { size: 24 });
       drawTextGame(`NOTE ${noteName || "--"}`, 20, 76, { size: 22 });
@@ -868,14 +983,12 @@
           playAudio(assets.dieAudio);
         }
 
-        game.pipeX -= DIFFICULTY_SETTINGS[game.difficulty].speed;
+        game.pipeX -= game.pipeSpeed;
         let spawnedNewPipe = false;
         const pipeSize = getPipeSize();
 
         if (game.pipeX < -pipeSize.w) {
-          game.pipeX = WIDTH + 250;
-          game.pipeY = randInt(120, HEIGHT - game.gap - 120);
-          game.pipeScored = false;
+          generateNextPipe();
           spawnedNewPipe = true;
         }
 
